@@ -1,7 +1,0 @@
-app = "quest-bot"
-
-[build]
-  dockerfile = "Dockerfile"
-
-[processes]
-  app = "python telegram_quest_bot.py"

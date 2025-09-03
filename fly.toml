@@ -1,0 +1,10 @@
+app = "quest-bot"  # можно поменять на своё имя приложения
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  app = "python telegram_quest_bot.py"
+
+# У воркера нет открытых портов, поэтому блок [services] не нужен
+# секрет BOT_TOKEN зададим отдельным шагом

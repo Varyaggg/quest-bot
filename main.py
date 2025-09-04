@@ -1,3 +1,4 @@
+
 import os
 import json
 import random
@@ -493,12 +494,15 @@ async def webhook(request: Request):
 
         if t in ("/статы", "/stats"):
             s = sget(chat_id)
-            await send_text(chat_id, f"📊 Статы:
-Уровень: {s.level}
-Опыт: {s.xp}/{s.level * 20}
-HP: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]
-Урон: {s.dmg_min}-{s.dmg_max}
-Инвентарь: {', '.join(s.inventory) if s.inventory else 'пусто'}")
+            stats_text = (
+                f"📊 Статы:\n"
+                f"Уровень: {s.level}\n"
+                f"Опыт: {s.xp}/{s.level * 20}\n"
+                f"HP: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]\n"
+                f"Урон: {s.dmg_min}-{s.dmg_max}\n"
+                f"Инвентарь: {', '.join(s.inventory) if s.inventory else 'пусто'}"
+            )
+            await send_text(chat_id, stats_text)
             return {"ok": True}
 
         if t in ("/помощь", "/help"):
@@ -593,27 +597,27 @@ HP: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]
                 c.hp -= pdmg
                 c.hp = max(0, c.hp)
 
-            # победа до ответа врага
-if c.hp <= 0:
-    await send_text(chat_id, f"🏆 {c.enemy} повержен!")
-    # опыт за победу: от 10 до 20 в зависимости от силы врага
-    gain = max(10, min(20, c.max_hp // 5))
-    s.xp += gain
-    # проверка повышения уровня: порог = 20 * текущий уровень
-    leveled = False
-    while s.xp >= s.level * 20:
-        s.xp -= s.level * 20
-        s.level += 1
-        s.max_hp += 2
-        s.dmg_min += 1
-        s.dmg_max += 1
-        s.hp = s.max_hp  # полный хил
-        leveled = True
-    if leveled:
-        await send_text(chat_id, f"✨ Повышение уровня! Теперь уровень {s.level}. HP: {s.hp}/{s.max_hp}, урон: {s.dmg_min}-{s.dmg_max}.")
-    s.combat = None
-    await show_location(chat_id, s, c.win_to)
-    return {"ok": True}
+                        # победа до ответа врага
+            if c.hp <= 0:
+                await send_text(chat_id, f"🏆 {c.enemy} повержен!")
+                # опыт за победу: от 10 до 20 в зависимости от силы врага
+                gain = max(10, min(20, c.max_hp // 5))
+                s.xp += gain
+                # проверка повышения уровня: порог = 20 * текущий уровень
+                leveled = False
+                while s.xp >= s.level * 20:
+                    s.xp -= s.level * 20
+                    s.level += 1
+                    s.max_hp += 2
+                    s.dmg_min += 1
+                    s.dmg_max += 1
+                    s.hp = s.max_hp  # полный хил
+                    leveled = True
+                if leveled:
+                    await send_text(chat_id, f"✨ Повышение уровня! Теперь уровень {s.level}. HP: {s.hp}/{s.max_hp}, урон: {s.dmg_min}-{s.dmg_max}.")
+                s.combat = None
+                await show_location(chat_id, s, c.win_to)
+                return {"ok": True}
 
             # урон врага (с учётом, что зелье выпито именно в этот ход)
             edmg = calc_enemy_damage(s, c, action, potion_used)

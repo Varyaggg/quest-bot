@@ -1,4 +1,5 @@
 
+
 import os
 import json
 import random
@@ -489,7 +490,10 @@ async def webhook(request: Request):
         if t in ("/инвентарь", "/inv"):
             s = sget(chat_id)
             inv = ", ".join(s.inventory) if s.inventory else "пусто"
-            await send_text(chat_id, f"🎒 Инвентарь: {inv}")
+            markup = None
+            if s.combat:
+                markup = kb([[{"text": "↩ Вернуться в бой", "data": "fight:status"}]])
+            await send_text(chat_id, f"🎒 Инвентарь: {inv}", markup)
             return {"ok": True}
 
         if t in ("/статы", "/stats"):
@@ -586,6 +590,11 @@ async def webhook(request: Request):
 
             action = data.split(":", 1)[1]  # hit/igni/aard/potion/amulet
             c = s.combat
+            # специальное действие статуса — просто показать текущую сцену боя
+            if action == "status":
+                caption, markup, img = build_combat_message(s)
+                await send_photo(chat_id, img, caption, markup)
+                return {"ok": True}
 
             # было ли зелье ДО расхода
             potion_used = (action == "potion") and have(s, "зелье")

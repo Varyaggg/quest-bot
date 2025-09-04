@@ -1,4 +1,3 @@
-
 import os
 import json
 import random
@@ -100,7 +99,12 @@ class Combat:
 
 @dataclass
 class Session:
-    hp: int = 8
+    max_hp: int = 50
+    hp: int = 50
+    level: int = 1
+    xp: int = 0
+    dmg_min: int = 6
+    dmg_max: int = 12
     location: str = "intro"
     inventory: List[str] = field(default_factory=list)
     finished: bool = False
@@ -134,7 +138,7 @@ NODES = {
             "на болоте воет Волколак, а в каменных кругах стынет Морозница. Коловоротный амулет старцев "
             "обещает дорогу к алтарю, где скрыта причина беды. Пройди тропы, избы, курганы, святилища и пещеры, "
             "сразись с чудовищами, разгадай руны и собери то, что поможет выжить. На алтаре завершится круг — и зло падёт.\n\n"
-            "У тебя 8 жизней. Всё управление — *кнопками*. Подсказки появляются по запросу.\n"
+            "У тебя 50 жизней (макс. HP 50). Всё управление — *кнопками*. Подсказки появляются по запросу.\n"
             "Готов начать путь?"
         ),
         "buttons": [
@@ -347,7 +351,7 @@ def build_combat_message(s: Session) -> (str, dict, str):
     assert c is not None
     title = f"*{c.enemy}*"
     enemy_hp = f"HP {c.hp}/{c.max_hp}  [{hp_bar(c.hp, c.max_hp)}]"
-    me_hp = f"Твои жизни: {s.hp}/8  [{hp_bar(s.hp, 8)}]"
+    me_hp = f"Твои жизни: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]"
     effect_hint = "Нажми «Подсказка», если нужно."
     rows = [
         [{"text": "Удар", "data": "fight:hit"},
@@ -361,10 +365,17 @@ def build_combat_message(s: Session) -> (str, dict, str):
     return caption, kb(rows), c.img
 
 def calc_player_damage(action: str, s: Session, c: Combat) -> int:
-    base = {"hit": (6, 12), "igni": (5, 11), "aard": (4, 9)}.get(action, (0, 0))
+    # базовый диапазон урона героя
     if action == "potion":
         return 0
-    lo, hi = base
+    if action == "hit":
+        lo, hi = s.dmg_min, s.dmg_max
+    elif action == "igni":
+        lo, hi = max(1, s.dmg_min-1), s.dmg_max  # заклинание опирается на силу героя
+    elif action == "aard":
+        lo, hi = max(1, s.dmg_min-2), max(s.dmg_min, s.dmg_max-1)
+    else:
+        lo, hi = 0, 0
     dmg = random.randint(lo, hi)
     # модификаторы
     if c.trait == "needs_silver" and (action == "hit") and have(s, "серебряный клинок"):
@@ -408,7 +419,7 @@ async def show_location(chat_id: int, s: Session, loc_key: str):
         # создаём новую копию, чтобы не шарить один Combat на всех
         s.combat = Combat(**asdict(c))
         # адаптив: если у героя мало жизней, ослабим врага на 20%
-        if s.hp <= 3:
+        if s.hp <= max(3, int(s.max_hp * 0.2)):
             s.combat.max_hp = int(s.combat.max_hp * 0.8)
             s.combat.hp = s.combat.max_hp
         caption, markup, img = build_combat_message(s)
@@ -471,7 +482,7 @@ async def webhook(request: Request):
 
         if t in ("/жизни", "/hp"):
             s = sget(chat_id)
-            await send_text(chat_id, f"❤ Твои жизни: {s.hp}/8  [{hp_bar(s.hp, 8)}]")
+            await send_text(chat_id, f"❤ Твои жизни: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]")
             return {"ok": True}
 
         if t in ("/инвентарь", "/inv"):
@@ -480,9 +491,19 @@ async def webhook(request: Request):
             await send_text(chat_id, f"🎒 Инвентарь: {inv}")
             return {"ok": True}
 
+        if t in ("/статы", "/stats"):
+            s = sget(chat_id)
+            await send_text(chat_id, f"📊 Статы:
+Уровень: {s.level}
+Опыт: {s.xp}/{s.level * 20}
+HP: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]
+Урон: {s.dmg_min}-{s.dmg_max}
+Инвентарь: {', '.join(s.inventory) if s.inventory else 'пусто'}")
+            return {"ok": True}
+
         if t in ("/помощь", "/help"):
             await send_text(chat_id, "Игра кнопками. Подсказки скрыты и появляются по кнопке «Подсказка». "
-                                     "Команды: /жизни /инвентарь /сброс /помощь.")
+                                     "Команды: /жизни /инвентарь /статы /stats /сброс /помощь.")
             return {"ok": True}
 
         if t in ("/сброс", "/reset"):
@@ -491,7 +512,7 @@ async def webhook(request: Request):
             await show_location(chat_id, SESS[chat_id], "intro")
             return {"ok": True}
 
-        await send_text(chat_id, "Используй *кнопки* ниже. Команды: /жизни /инвентарь /сброс /помощь.")
+        await send_text(chat_id, "Используй *кнопки* ниже. Команды: /жизни /инвентарь /статы /stats /сброс /помощь.")
         return {"ok": True}
 
     # callbacks (кнопки)
@@ -573,11 +594,26 @@ async def webhook(request: Request):
                 c.hp = max(0, c.hp)
 
             # победа до ответа врага
-            if c.hp <= 0:
-                await send_text(chat_id, f"🏆 {c.enemy} повержен!")
-                s.combat = None
-                await show_location(chat_id, s, c.win_to)
-                return {"ok": True}
+if c.hp <= 0:
+    await send_text(chat_id, f"🏆 {c.enemy} повержен!")
+    # опыт за победу: от 10 до 20 в зависимости от силы врага
+    gain = max(10, min(20, c.max_hp // 5))
+    s.xp += gain
+    # проверка повышения уровня: порог = 20 * текущий уровень
+    leveled = False
+    while s.xp >= s.level * 20:
+        s.xp -= s.level * 20
+        s.level += 1
+        s.max_hp += 2
+        s.dmg_min += 1
+        s.dmg_max += 1
+        s.hp = s.max_hp  # полный хил
+        leveled = True
+    if leveled:
+        await send_text(chat_id, f"✨ Повышение уровня! Теперь уровень {s.level}. HP: {s.hp}/{s.max_hp}, урон: {s.dmg_min}-{s.dmg_max}.")
+    s.combat = None
+    await show_location(chat_id, s, c.win_to)
+    return {"ok": True}
 
             # урон врага (с учётом, что зелье выпито именно в этот ход)
             edmg = calc_enemy_damage(s, c, action, potion_used)

@@ -1,5 +1,4 @@
 
-
 import os
 import json
 import random
@@ -101,7 +100,15 @@ class Combat:
 
 @dataclass
 class Session:
-    hp: int = 8
+    max_hp: int = 50
+    hp: int = 50
+    level: int = 1
+    xp: int = 0
+    dmg_min: int = 6
+    dmg_max: int = 12
+    yrden_turns: int = 0
+    _axii_last_success: bool = False
+    _burned_item_last: str = ""
     location: str = "intro"
     inventory: List[str] = field(default_factory=list)
     finished: bool = False
@@ -135,7 +142,7 @@ NODES = {
             "на болоте воет Волколак, а в каменных кругах стынет Морозница. Коловоротный амулет старцев "
             "обещает дорогу к алтарю, где скрыта причина беды. Пройди тропы, избы, курганы, святилища и пещеры, "
             "сразись с чудовищами, разгадай руны и собери то, что поможет выжить. На алтаре завершится круг — и зло падёт.\n\n"
-            "У тебя 8 жизней. Всё управление — *кнопками*. Подсказки появляются по запросу.\n"
+            "У тебя 50 жизней. Всё управление — *кнопками*. Подсказки появляются по запросу.\n"
             "Готов начать путь?"
         ),
         "buttons": [
@@ -342,13 +349,330 @@ NODES = {
     },
 }
 
+
+# === EXPANSION: images & new nodes ===
+IMG.update({
+    "ruins": "https://images.unsplash.com/photo-1483721310020-03333e577078",
+    "idol": "https://images.unsplash.com/photo-1523419409543-1882bd33f2e0",
+    "witch": "https://images.unsplash.com/photo-1526318472351-c75fcf070305",
+    "bog2": "https://images.unsplash.com/photo-1533587851505-d119e13fa0d7",
+    "shadow": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+    "ognevic": "https://images.unsplash.com/photo-1519681393784-d120267933ba",
+    "cave": "https://images.unsplash.com/photo-1507502707541-f369a3b18502",
+    "serpent": "https://images.unsplash.com/photo-1515548212256-91d67ea4b222",
+    "ghost": "https://images.unsplash.com/photo-1514511542222-1f2fc2d6a2fa",
+    "ghoul": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+    "crypt": "https://images.unsplash.com/photo-1482192596544-9eb780fc7f66",
+    "ruins_inner": "https://images.unsplash.com/photo-1549880338-65ddcdfd017b",
+})
+
+NEW_NODES = {
+    "ruins_path": {
+        "img": IMG["ruins"],
+        "text": "🏚 *Старая дорога к руинам.*\n\nДорога уходит в каменистый яр, где когда-то стоял храм. На мшистых плитах — следы от копыт и круги, будто кто-то двигал камни.",
+        "buttons": [
+            [{"text": "К воротам руин", "to": "ruins_gate"}],
+            [{"text": "Вернуться к тропе", "to": "trail"}]
+        ]
+    },
+    "ruins_gate": {
+        "img": IMG["idol"],
+        "text": "🗿 *Каменный идол у ворот.*\n\nЛицо без глаз, рот — щель. Слышен низкий гул: идол оживает.",
+        "combat": Combat(enemy="Каменный идол", max_hp=110, hp=110, img=IMG["idol"], dmg_min=3, dmg_max=8, hint="Камень терпелив, но боится огня. Игни прожигает трещины.", win_to="ruins_inner", trait="stone_skin"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "ruins_inner": {
+        "img": IMG["ruins_inner"],
+        "text": "🏛 *Внутренние залы руин.*\n\nПыльные колонны, шёпот сквозняка, на плитах — руны старцев. В нишах — разбитые сосуды, в углу — следы костра и кости мелких зверей.",
+        "buttons": [
+            [{"text": "🔍 Осмотреть руны", "to": "ruins_riddle"}],
+            [{"text": "Идти к белой ведьме", "to": "white_witch_spawn"}],
+            [{"text": "Вернуться к тропе", "to": "trail"}]
+        ]
+    },
+    "ruins_riddle": {
+        "img": IMG["ruins_inner"],
+        "text": "На плите выгравировано: «Что утром на четырёх, днём на двух, вечером на трёх?»",
+        "buttons": [
+            [{"text": "Человек", "to": "ruins_riddle_right"}],
+            [{"text": "Волк", "to": "ruins_riddle_wrong"}],
+            [{"text": "Идол", "to": "ruins_riddle_wrong"}]
+        ]
+    },
+    "ruins_riddle_right": {
+        "img": IMG["ruins_inner"],
+        "text": "Руны теплеют. В нише щёлкнуло.",
+        "buttons": [
+            [{"text": "Взять ключ", "data": "take:ключ:white_witch_spawn"}]
+        ]
+    },
+    "ruins_riddle_wrong": {
+        "img": IMG["ruins_inner"],
+        "text": "Плита дёрнулась — камень ударил по ноге.",
+        "hp_delta": -10,
+        "buttons": [
+            [{"text": "Отойти к залу", "to": "ruins_inner"}]
+        ]
+    },
+    "white_witch_spawn": {
+        "img": IMG["witch"],
+        "text": "👻 *Ведьма в белом* выходит из тени колонны. Шепчет — и холод поднимается по спине.",
+        "combat": Combat(enemy="Ведьма в белом", max_hp=80, hp=80, img=IMG["witch"], dmg_min=3, dmg_max=7, hint="Страх стягивает грудь. Поможет Аксий или решительный удар.", win_to="bog_path", trait="fear"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "bog_path": {
+        "img": IMG["bog2"],
+        "text": "🌫 *Глубокое болото.*\n\nОгни мерцают между кочками, тростник шепчет. Вязкая тропа уводит всё дальше.",
+        "buttons": [
+            [{"text": "🛶 Помочь старику переправить лодку", "to": "bog_oldman"}],
+            [{"text": "Пройти мимо", "to": "bog_shadow_spawn"}],
+            [{"text": "К шепчущему огню", "to": "ognevic_spawn"}],
+            [{"text": "Назад к развилке", "to": "trail"}]
+        ]
+    },
+    "bog_oldman": {
+        "img": IMG["bog2"],
+        "text": "Старик кивает и благодарит. Но силы уходит на вёсла.",
+        "hp_delta": -10,
+        "buttons": [
+            [{"text": "Получить зелье и идти дальше", "data": "take:зелье:bog_shadow_spawn"}]
+        ]
+    },
+    "bog_shadow_spawn": {
+        "img": IMG["shadow"],
+        "text": "🕯 *Болотная тень* выплывает из тумана, шевелясь, как дым.",
+        "combat": Combat(enemy="Болотная тень", max_hp=70, hp=70, img=IMG["shadow"], dmg_min=2, dmg_max=6, hint="Тень ускользает — попадать сложно. Аард срывает маску.", win_to="cave_entrance", trait="evasive"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "ognevic_spawn": {
+        "img": IMG["ognevic"],
+        "text": "🔥 *Огневик* вспыхивает прямо из трясины, сжигая тростник, жар обжигает лицо.",
+        "combat": Combat(enemy="Огневик", max_hp=85, hp=85, img=IMG["ognevic"], dmg_min=3, dmg_max=9, hint="Огонь не терпит пустоты. Аард срывает языки пламени.", win_to="cave_entrance", trait="burn_items"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "cave_entrance": {
+        "img": IMG["cave"],
+        "text": "🕳 *Вход в пещеру.*\n\nХолодный воздух тянет снизу. Стены изрезаны, будто когтями. Где-то глубже капает вода.",
+        "buttons": [
+            [{"text": "🪨 Осмотреть стену (свиток огня)", "to": "cave_scroll"}],
+            [{"text": "👂 Прислушаться к эху", "to": "cave_echo"}],
+            [{"text": "Спуститься ниже", "to": "serpent_spawn"}],
+            [{"text": "Ответвление к нише", "to": "ghost_spawn"}],
+            [{"text": "Вернуться к болоту", "to": "bog_path"}]
+        ]
+    },
+    "cave_scroll": {
+        "img": IMG["cave"],
+        "text": "В трещине стены спрятан свиток.",
+        "buttons": [
+            [{"text": "Взять свиток огня", "data": "take:свиток огня:cave_entrance"}]
+        ]
+    },
+    "cave_echo": {
+        "img": IMG["cave"],
+        "text": "Эхо шепчет: «Что тяжелее — пуд ваты или пуд железа?»",
+        "buttons": [
+            [{"text": "Одинаково", "to": "echo_right"}],
+            [{"text": "Железо", "to": "echo_wrong"}]
+        ]
+    },
+    "echo_right": {
+        "img": IMG["cave"],
+        "text": "Голос одобряет. ты чувствуешь прилив сил.",
+        "hp_delta": +5,
+        "buttons": [
+            [{"text": "Вернуться к развилке", "to": "cave_entrance"}]
+        ]
+    },
+    "echo_wrong": {
+        "img": IMG["cave"],
+        "text": "Эхо смеётся и гасит факел.",
+        "hp_delta": -5,
+        "buttons": [
+            [{"text": "Вернуться к развилке", "to": "cave_entrance"}]
+        ]
+    },
+    "serpent_spawn": {
+        "img": IMG["serpent"],
+        "text": "🐍 *Змей трёхглавый* извивается, каждая голова шипит по-своему.",
+        "combat": Combat(enemy="Змей трёхглавый", max_hp=120, hp=120, img=IMG["serpent"], dmg_min=3, dmg_max=8, hint="Руби быстро — головы промахиваются, но если попадут — будет больно.", win_to="crypt_hall", trait="double_strike"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "ghost_spawn": {
+        "img": IMG["ghost"],
+        "text": "⚰️ *Призрак воина* выходит из тьмы ниши, шепчет древние клятвы.",
+        "combat": Combat(enemy="Призрак воина", max_hp=75, hp=75, img=IMG["ghost"], dmg_min=2, dmg_max=7, hint="Ему не по душе грубая сила. Заклинания и амулет помогут.", win_to="crypt_hall", trait="reflect"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "crypt_hall": {
+        "img": IMG["crypt"],
+        "text": "🕯 *Зал крипты.*\n\nСвечи стекли в каменные чаши, запах ладана и железа. Плита алтаря закрыта печатью.",
+        "buttons": [
+            [{"text": "⚡ Сломать печать (−15 HP)", "to": "crypt_break"}],
+            [{"text": "🧿 Применить амулет", "to": "crypt_open"}],
+            [{"text": "Вернуться к тропе", "to": "trail"}]
+        ]
+    },
+    "crypt_break": {
+        "img": IMG["crypt"],
+        "text": "Ты срываешь печать силой.",
+        "hp_delta": -15,
+        "buttons": [
+            [{"text": "К финальному алтарю", "to": "trail"}]
+        ]
+    },
+    "crypt_open": {
+        "img": IMG["crypt"],
+        "text": "Амулет теплеет, руны растворяются.",
+        "buttons": [
+            [{"text": "К финальному алтарю", "to": "trail"}]
+        ]
+    },
+    
+    "scorpion_path": {
+        "img": "https://images.unsplash.com/photo-1609587314425-c65f63dc67d3",
+        "text": "🏜 *Пустынная расщелина.*\\n\\nУзкий проход между каменными стенами. В песке поблёскивают хитиновые пластины.",
+        "buttons": [
+            [{"text": "Осмотреть песок", "to": "scorpion_spawn"}],
+            [{"text": "Вернуться к тропе", "to": "trail"}]
+        ]
+    },
+    "scorpion_spawn": {
+        "img": "https://images.unsplash.com/photo-1618005182384-a83a8d0fa4c1",
+        "text": "🦂 *Песчаный скорпион* вырывается из песка, клешни щёлкают, жало блестит.",
+        "combat": Combat(enemy="Песчаный скорпион", max_hp=85, hp=85,
+            img="https://images.unsplash.com/photo-1618005182384-a83a8d0fa4c1",
+            dmg_min=4, dmg_max=9,
+            hint="Ядовитое жало. Используй Квен или Аард, чтобы пережить яд.",
+            win_to="trail", trait="poison"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+    "ghoul_spawn": {
+        "img": IMG["ghoul"],
+        "text": "🩸 *Вурдалак* крадётся, зубы поблёскивают в темноте.",
+        "combat": Combat(enemy="Вурдалак", max_hp=90, hp=90, img=IMG["ghoul"], dmg_min=3, dmg_max=7, hint="Ранишь — он пьёт кровь. Бей быстро и не подпускай.", win_to="trail", trait="lifesteal"),
+        "buttons": [
+            [{"text": "Удар", "data": "fight:hit"}, {"text": "Игни", "data": "fight:igni"}],
+            [{"text": "Аард", "data": "fight:aard"}, {"text": "Квен", "data": "fight:quen"}],
+            [{"text": "Ирден", "data": "fight:yrden"}, {"text": "Аксий", "data": "fight:axii"}],
+            [{"text": "Выпить зелье", "data": "fight:potion"}, {"text": "Показать амулет", "data": "fight:amulet"}],
+            [{"text": "Подсказка", "data": "hint:combat"}],
+        ]
+    },
+}
+
+try:
+    NODES.update(NEW_NODES)
+    if "trail" in NODES and isinstance(NODES["trail"].get("buttons"), list):
+        NODES["trail"]["buttons"].append([{"text": "Пойти к руинам", "to": "ruins_path"}])
+        NODES["trail"]["buttons"].append([{"text": "Свернуть к болоту", "to": "bog_path"}])
+        NODES["trail"]["buttons"].append([{"text": "В пещеру (ответвление)", "to": "cave_entrance"}])
+    elif "intro" in NODES and isinstance(NODES["intro"].get("buttons"), list):
+        NODES["intro"]["buttons"].append([{"text": "Пойти к руинам", "to": "ruins_path"}])
+        NODES["intro"]["buttons"].append([{"text": "Свернуть к болоту", "to": "bog_path"}])
+        NODES["intro"]["buttons"].append([{"text": "В пещеру (ответвление)", "to": "cave_entrance"}])
+except Exception as e:
+    pass
+
+
+# === EXPANSION (Mirror Hall Riddle) ===
+IMG.update({
+    "mirror_hall": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?ixlib=rb-4.0.3&auto=format&fit=crop&w=1280&q=80"
+})
+
+NEW_NODES_MIRROR = {
+    "mirror_hall": {
+        "img": IMG["mirror_hall"],
+        "text": "🪞 *Зеркальный зал.*\n\nПлитки пола отражают тебя, словно вода. На стене выгравировано: «Ответь — и путь откроется».",
+        "buttons": [
+            [{"text": "Подойти к надписи", "to": "mirror_riddle"}],
+            [{"text": "Вернуться назад", "to": "trail"}]
+        ]
+    },
+    "mirror_riddle": {
+        "img": IMG["mirror_hall"],
+        "text": "Загадка: *Что можно сломать, не касаясь?*",
+        "buttons": [
+            [{"text": "Тишину", "to": "mirror_right"}],
+            [{"text": "Лёд", "to": "mirror_wrong"}],
+            [{"text": "Клятву", "to": "mirror_wrong"}]
+        ]
+    },
+    "mirror_right": {
+        "img": IMG["mirror_hall"],
+        "text": "Зеркала звенят, и из стены выезжает ниша со светящимся осколком.",
+        "buttons": [
+            [{"text": "Взять осколок зеркала", "data": "take:осколок зеркала:mirror_hall"}]
+        ]
+    },
+    "mirror_wrong": {
+        "img": IMG["mirror_hall"],
+        "text": "Эхо насмехается, зеркала мутнеют — тебе становится не по себе.",
+        "hp_delta": -7,
+        "buttons": [
+            [{"text": "Попробовать снова", "to": "mirror_riddle"}],
+            [{"text": "Отступить", "to": "mirror_hall"}]
+        ]
+    }
+}
+
+try:
+    NODES.update(NEW_NODES_MIRROR)
+    # Ссылка из стартовой тропы
+    if "trail" in NODES and isinstance(NODES["trail"].get("buttons"), list):
+        NODES["trail"]["buttons"].append([{"text": "Зеркальный зал", "to": "mirror_hall"}])
+except Exception:
+    pass
+
 # === COMBAT ENGINE ===
 def build_combat_message(s: Session) -> (str, dict, str):
     c = s.combat
     assert c is not None
     title = f"*{c.enemy}*"
     enemy_hp = f"HP {c.hp}/{c.max_hp}  [{hp_bar(c.hp, c.max_hp)}]"
-    me_hp = f"Твои жизни: {s.hp}/8  [{hp_bar(s.hp, 8)}]"
+    me_hp = f"Твои жизни: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]"
     effect_hint = "Нажми «Подсказка», если нужно."
     rows = [
         [{"text": "Удар", "data": "fight:hit"},
@@ -362,32 +686,77 @@ def build_combat_message(s: Session) -> (str, dict, str):
     return caption, kb(rows), c.img
 
 def calc_player_damage(action: str, s: Session, c: Combat) -> int:
-    base = {"hit": (6, 12), "igni": (5, 11), "aard": (4, 9)}.get(action, (0, 0))
-    if action == "potion":
+    if action in ("potion", "quen", "yrden", "axii"):
         return 0
-    lo, hi = base
+    if action == "hit":
+        lo, hi = s.dmg_min, s.dmg_max
+    elif action == "igni":
+        lo, hi = max(1, s.dmg_min-1), s.dmg_max
+    elif action == "aard":
+        lo, hi = max(1, s.dmg_min-2), max(s.dmg_min, s.dmg_max-1)
+    elif action == "amulet":
+        if c.trait == "stuns_with_amulet":
+            return 12
+        return 0
+    else:
+        lo, hi = 0, 0
     dmg = random.randint(lo, hi)
-    # модификаторы
     if c.trait == "needs_silver" and (action == "hit") and have(s, "серебряный клинок"):
         dmg += 10
     if c.trait == "weak_to_igni" and action == "igni":
         dmg += 8
     if c.trait == "weak_to_aard" and action == "aard":
         dmg += 8
-    if action == "amulet" and c.trait == "stuns_with_amulet":
-        dmg = 12
+    trait = (c.trait or "").strip()
+    if trait == "evasive":
+        if random.random() < 0.25:
+            dmg = 0
+    if trait == "stone_skin":
+        dmg = max(0, int(dmg * 0.7))
+    if trait == "fear":
+        dmg = int(dmg * 0.75)
     return max(0, dmg)
 
 def calc_enemy_damage(s: Session, c: Combat, player_action: str, potion_used: bool) -> int:
-    # базовый урон
+    s._axii_last_success = False
+    s._burned_item_last = ""
     dmg = random.randint(c.dmg_min, c.dmg_max)
-    # Морозница: амулет в ход → оглушение холода
+    dmg = int(round(dmg * 1.35))
+    if dmg < 1:
+        dmg = 1
+    if player_action == "quen":
+        dmg = max(0, int(dmg * 0.6) - 2)
+    if getattr(s, 'yrden_turns', 0) > 0:
+        dmg = int(dmg * 0.7)
+    if player_action == "axii":
+        if random.random() < 0.5:
+            s._axii_last_success = True
+            return 0
     if player_action == "amulet" and c.enemy == "Морозница":
         dmg = 0
-    # зелье — минус 50% урона в ЭТОТ ход
+    trait = (c.trait or "").strip()
+    if trait == "double_strike":
+        total = 0
+        for _ in range(2):
+            if random.random() < 0.7:
+                part = random.randint(max(1, c.dmg_min//2), c.dmg_max)
+                part = int(round(part * 1.35))
+                total += part
+        dmg = max(dmg, total)
+    if trait == "burn_items":
+        if random.random() < 0.25:
+            inv_norm = [norm(x) for x in s.inventory]
+            if "зелье" in inv_norm:
+                s.inventory = [x for x in s.inventory if norm(x) != "зелье"]
+                s._burned_item_last = "зелье"
+            elif "травы" in inv_norm:
+                s.inventory = [x for x in s.inventory if norm(x) != "травы"]
+                s._burned_item_last = "травы"
+    if trait == "poison" and dmg > 0:
+        if not hasattr(s, "poison_turns") or s.poison_turns <= 0:
+            s.poison_turns = 3
     if potion_used:
         dmg //= 2
-    # общий амулет — лёгкая защита (-2), если просто лежит в инвентаре
     if have(s, "амулет") and dmg > 0:
         dmg = max(0, dmg - 2)
     return dmg
@@ -472,13 +841,16 @@ async def webhook(request: Request):
 
         if t in ("/жизни", "/hp"):
             s = sget(chat_id)
-            await send_text(chat_id, f"❤ Твои жизни: {s.hp}/8  [{hp_bar(s.hp, 8)}]")
+            await send_text(chat_id, f"❤ Твои жизни: {s.hp}/{s.max_hp}  [{hp_bar(s.hp, s.max_hp)}]")
             return {"ok": True}
 
         if t in ("/инвентарь", "/inv"):
             s = sget(chat_id)
             inv = ", ".join(s.inventory) if s.inventory else "пусто"
-            await send_text(chat_id, f"🎒 Инвентарь: {inv}")
+            markup = None
+            if s.combat:
+                markup = kb([[{"text": "↩ Вернуться в бой", "data": "fight:status"}]])
+            await send_text(chat_id, f"🎒 Инвентарь: {inv}", markup)
             return {"ok": True}
 
         if t in ("/помощь", "/help"):
@@ -548,6 +920,7 @@ async def webhook(request: Request):
             if item == "зелье":
                 if have(s, "травы"):
                     add_item(s, "зелье")
+                    s.inventory = [x for x in s.inventory if norm(x) != "травы"]
                     await send_text(chat_id, "Ты сварил *зелье*.")
                 else:
                     await send_text(chat_id, "Нет трав — зелье не сварить.")
@@ -560,8 +933,20 @@ async def webhook(request: Request):
                 await send_text(chat_id, "Сейчас не бой.")
                 return {"ok": True}
 
-            action = data.split(":", 1)[1]  # hit/igni/aard/potion/amulet
+            action = data.split(":", 1)[1]  # hit/igni/aard/potion/amulet/... 
             c = s.combat
+            if action == "status":
+                caption, markup, img = build_combat_message(s)
+                await send_photo(chat_id, img, caption, markup)
+                return {"ok": True}
+
+            if action == "status":
+                caption, markup, img = build_combat_message(s)
+                await send_photo(chat_id, img, caption, markup)
+                return {"ok": True}
+
+            if action == "yrden":
+                s.yrden_turns = 2
 
             # было ли зелье ДО расхода
             potion_used = (action == "potion") and have(s, "зелье")
@@ -583,13 +968,19 @@ async def webhook(request: Request):
             # урон врага (с учётом, что зелье выпито именно в этот ход)
             edmg = calc_enemy_damage(s, c, action, potion_used)
             fate_saved = False
+            mirror_saved = False
+            # Если удар смертелен и у нас есть осколок зеркала — он спасает жизнь и сгорает
+            if s.hp - edmg <= 0 and have(s, "осколок зеркала"):
+                edmg = max(0, s.hp - 1)
+                # удалить осколок из инвентаря
+                s.inventory = [x for x in s.inventory if norm(x) != "осколок зеркала"]
+                mirror_saved = True
             if s.hp - edmg <= 0 and s.fate > 0:
                 edmg = max(0, s.hp - 1)
                 s.fate -= 1
                 fate_saved = True
-
-            s.hp -= edmg
-            s.hp = max(0, s.hp)
+                heal = max(1, edmg // 3)
+                c.hp = min(c.max_hp, c.hp + heal)
 
             # теперь тратим зелье (после применения эффекта и корректного лога)
             if potion_used:
@@ -604,20 +995,41 @@ async def webhook(request: Request):
                 else:
                     log.append("Ты пытался выпить зелье, но его нет.")
             elif action == "amulet":
-                log.append("Ты показал *амулет* — холод отступает.")
+                log.append("Ты показал *амулет*.")
             elif action == "hit":
                 log.append(f"Ты ударил: −{pdmg} HP у врага.")
             elif action == "igni":
                 log.append(f"Применён *Игни*: −{pdmg} HP у врага.")
             elif action == "aard":
                 log.append(f"Порыв *Аарда*: −{pdmg} HP у врага.")
+            elif action == "quen":
+                log.append("*Квен*: щит смягчит удар в этот ход.")
+            elif action == "yrden":
+                log.append("*Ирден*: враг ослаблен на 2 хода.")
+            elif action == "axii":
+                if hasattr(s, "_axii_last_success") and s._axii_last_success:
+                    log.append("*Аксий*: враг ошеломлён и пропускает ход!")
+                else:
+                    log.append("*Аксий*: не сработал.")
 
             if edmg > 0:
                 log.append(f"{c.enemy} бьёт по тебе: −{edmg} HP.")
             else:
                 log.append(f"{c.enemy} не смог причинить вреда в этот ход.")
-            if fate_saved:
+            if hasattr(s, "_burned_item_last") and s._burned_item_last:
+                log.append(f"Огонь врага сжёг *{s._burned_item_last}* из твоего инвентаря!")
+            if mirror_saved:
+                log.append("✨ Осколок зеркала вспыхнул и спас тебя от гибели!")
+            elif fate_saved:
                 log.append("⚖️ Судьба уберегла тебя от гибели (осталась 1 жизнь).")
+            if hasattr(s, "yrden_turns") and s.yrden_turns > 0 and action != "yrden":
+                s.yrden_turns -= 1
+
+            # тик яда в конце хода
+            if hasattr(s, "poison_turns") and s.poison_turns > 0:
+                s.hp = max(0, s.hp - 1)
+                s.poison_turns -= 1
+                log.append("☠️ Яд гложет тебя: −1 HP.")
 
             await send_photo(chat_id, img, caption + "\n\n" + "\n".join(log), markup)
 

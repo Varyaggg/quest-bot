@@ -1,4 +1,5 @@
 
+
 import os
 import json
 import random
@@ -770,6 +771,7 @@ async def show_location(chat_id: int, s: Session, loc_key: str):
     if "hp_delta" in node:
         s.hp += node["hp_delta"]
         s.hp = max(0, s.hp)
+        s.hp = min(s.hp, s.max_hp)
 
     # бой?
     if "combat" in node and isinstance(node["combat"], Combat):
